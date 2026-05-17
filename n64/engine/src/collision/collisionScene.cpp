@@ -148,6 +148,7 @@ namespace P64::Coll {
 
   void CollisionScene::reset() {
     colliderAABBTree.destroy();
+    meshColliderAABBTree.destroy();
 
     rigidBodies_.clear();
     ownerRigidBodies_.clear();
@@ -174,6 +175,7 @@ namespace P64::Coll {
     ticksTotal = 0;
 
     colliderAABBTree.init(32); // Initial capacity (will grow as needed)
+    meshColliderAABBTree.init(32);
   }
 
   RigidBody *CollisionScene::findRigidBodyByOwner(const Object *owner) const {
@@ -373,6 +375,8 @@ namespace P64::Coll {
     mesh->syncOwnerTransform();
 
     meshColliders_.push_back(mesh);
+
+    mesh->aabbTreeNodeId_ = meshColliderAABBTree.createNode(mesh->worldAabb_, mesh);
   }
 
   void CollisionScene::removeMeshCollider(MeshCollider *mesh) {
@@ -391,6 +395,11 @@ namespace P64::Coll {
         meshColliders_.pop_back();
         break;
       }
+    }
+
+    if (mesh->aabbTreeNodeId_ != NULL_NODE) {
+      meshColliderAABBTree.removeLeaf(mesh->aabbTreeNodeId_, true);
+      mesh->aabbTreeNodeId_ = NULL_NODE;
     }
   }
 
@@ -818,6 +827,9 @@ namespace P64::Coll {
     std::vector<NodeProxy> candidates;
     candidates.resize(colliders_.size());
 
+    std::vector<NodeProxy> meshCandidates;
+    meshCandidates.resize(meshColliders_.size());
+
     for(RigidBody *body : rigidBodies_) {
       if(!body || body->isSleeping_ || body->isKinematic_) continue;
 
@@ -900,12 +912,18 @@ namespace P64::Coll {
         if (hit) break;
 
         // Broadphase + narrowphase against mesh colliders
-        for(MeshCollider *mesh : meshColliders_) {
-          if(!mesh || mesh->triangleCount_ <= 0) continue;
-          for(Collider *collider : *ownerColliders) {
-            if(!collider || !collider->owner_) continue;
+        for(Collider *collider : *ownerColliders) {
+          if(!collider || !collider->owner_) continue;
+          const int meshCandidateCount = meshColliderAABBTree.queryBounds(
+             collider->worldAabb_,
+             meshCandidates.data(),
+             static_cast<int>(meshCandidates.size()));
+          for(int m = 0; m < meshCandidateCount; ++m) {
+            void *data = meshColliderAABBTree.getNodeData(meshCandidates[m]);
+            if (!data) continue;
+            MeshCollider* mesh = static_cast<MeshCollider *>(data);
+            if(!mesh || mesh->triangleCount_ <= 0) continue;
             if(!collider->readsMeshCollider(mesh) && !mesh->readsCollider(collider)) continue;
-            if(!aabbOverlap(collider->worldAabb_, mesh->worldAabb_)) continue;
             if(collideDetectObjectToMesh(collider, body, *mesh, false)) {
               debugf("CCD substep %d/%d: body %u hit mesh %u", k, substeps, collider->owner_->id, mesh->owner_ ? static_cast<unsigned>(mesh->owner_->id) : 0u);
               hit = true;
@@ -1002,40 +1020,33 @@ namespace P64::Coll {
     }
     ticksDetectBodyPairs = get_ticks() - bodyDetectStart;
 
+    std::vector<NodeProxy> candidateMeshColliders;
+    candidateMeshColliders.resize(meshColliders_.size());
+
     const uint64_t meshDetectStart = get_ticks();
-    for (std::size_t m = 0; m < meshColliders_.size(); ++m)
-    {
+    for (Collider *collider : colliders_) {
+      if (!collider || !collider->owner_) continue;
 
-      MeshCollider *mesh = meshColliders_[m];
+      RigidBody *rigidBodyA = findRigidBodyByOwner(collider->owner_);
 
-      if (!mesh || mesh->triangleCount_ <= 0)
-        continue;
+      if (!collider->isTrigger_ && rigidBodyA && rigidBodyA->isSleeping_) continue;
 
-      const int candidateCount = colliderAABBTree.queryBounds(
-          mesh->worldAabb_,
-          candidateColliders.data(),
-          static_cast<int>(candidateColliders.size()));
+      const int candidateCount = meshColliderAABBTree.queryBounds(
+          collider->worldAabb_,
+          candidateMeshColliders.data(),
+          static_cast<int>(candidateMeshColliders.size()));
 
-      for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx)
-      {
-        void *data = colliderAABBTree.getNodeData(candidateColliders[candidateIdx]);
-        if (!data)
-          continue;
+      for (int candidateIdx = 0; candidateIdx < candidateCount; ++candidateIdx) {
+        void *data = meshColliderAABBTree.getNodeData(candidateMeshColliders[candidateIdx]);
+        if (!data) continue;
 
-        Collider *collA = static_cast<Collider *>(data);
-        if(!collA || !collA->owner_)
-          continue;
+        MeshCollider *meshA = static_cast<MeshCollider *>(data);
+        if (!meshA || meshA->triangleCount_ <= 0) continue;
 
-        if (!collA->readsMeshCollider(mesh) && !mesh->readsCollider(collA))
-          continue;
+        if (!meshA->readsCollider(collider) && !collider->readsMeshCollider(meshA)) continue;
 
-        RigidBody *rigidBodyA = findRigidBodyByOwner(collA->owner_);
-        //prevent perpetural collision checks of sleeping objects with meshes
-        if(!mesh->transformChanged_ && rigidBodyA && rigidBodyA->isSleeping_ && !collA->isTrigger_)
-          continue;
-        collideDetectObjectToMesh(collA, rigidBodyA, *mesh, true);
+        collideDetectObjectToMesh(collider, rigidBodyA, *meshA, true);
       }
-
     }
     ticksDetectMeshPairs = get_ticks() - meshDetectStart;
     //TODO: possibly offer mesh-mesh collision detection in the future, but not needed for current use cases
@@ -1471,8 +1482,20 @@ namespace P64::Coll {
       mesh->transformChanged_ = mesh->hasOwnerTransformChanged();
       if(!mesh->transformChanged_ && mesh->hasCachedOwnerTransform_) continue;
 
+      fm_vec3_t prevOwnerPhysicsPos = mesh->owner_ ? mesh->owner_->pos * getInvGfxScale() : VEC3_ZERO;
+
       mesh->recalculateWorldAabb();
       mesh->syncOwnerTransform();
+
+      if (mesh->aabbTreeNodeId_ != NULL_NODE) {
+        if (mesh->owner_) {
+          fm_vec3_t ownerPhysicsPos = mesh->owner_->pos * getInvGfxScale();
+          const fm_vec3_t disp = ownerPhysicsPos - prevOwnerPhysicsPos;
+          meshColliderAABBTree.moveNode(mesh->aabbTreeNodeId_, mesh->worldAabb_, disp);
+        } else {
+          meshColliderAABBTree.moveNode(mesh->aabbTreeNodeId_, mesh->worldAabb_, VEC3_ZERO);
+        }
+      }
     }
   }
 
@@ -1487,8 +1510,10 @@ namespace P64::Coll {
 
     // Test mesh colliders
     if(hasFlag(ray.collTypes, RaycastColliderTypeFlags::MESH_COLLIDERS)) {
-      for(std::size_t m = 0; m < meshColliders_.size(); ++m) {
-        const MeshCollider *mesh = meshColliders_[m];
+      NodeProxy meshCandidates[RAYCAST_MAX_COLLIDER_TESTS];
+      int meshCount = meshColliderAABBTree.queryRay(ray, meshCandidates, RAYCAST_MAX_COLLIDER_TESTS);
+      for(int m = 0; m < meshCount; ++m) {
+        const MeshCollider* mesh = static_cast<const MeshCollider*>(meshColliderAABBTree.getNodeData(meshCandidates[m]));
         if(!mesh || mesh->triangleCount_ == 0) continue;
         Raycast localRay = ray;
         if(mesh->hasScale()) {
