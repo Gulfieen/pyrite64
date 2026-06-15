@@ -399,7 +399,7 @@ void Editor::ObjectInspector::draw() {
     // Faint help icon near the right edge of the header
     if (def.docSlug && def.docSlug[0]) {
       const float helpSize = 19_px;
-      ImGui::SameLine(ImGui::GetWindowWidth() - helpSize - 24_px);
+      ImGui::SameLine(ImGui::GetContentRegionMax().x - helpSize - 4_px);
       ImGui::HelpIcon(def.docSlug, "Open Docs", helpSize);
     }
 
