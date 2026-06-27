@@ -1139,6 +1139,11 @@ void Editor::Viewport3D::draw()
   }
   if (!newMouseDown)isMouseDown = false;
 
+  // The 3D scene is rendered later this frame using the camera as updated above,
+  // but the gizmo overlay below is positioned now.
+  // refresh transform here to not be out of sync
+  camera.apply(uniGlobal);
+
   currPos = ImGui::GetCursorScreenPos();
   currPos.x = floorf(currPos.x + offX);
   currPos.y = floorf(currPos.y + offY);
