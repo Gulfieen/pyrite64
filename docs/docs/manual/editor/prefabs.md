@@ -54,7 +54,7 @@ selected, ready to be positioned. You can place as many instances of the same pr
 want, and they will all stay linked to the same source.
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_instance.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_instance.mp4" type="video/mp4">
 </video>
 
 ## Instances and their source
@@ -79,7 +79,7 @@ setting you have not touched keeps being read from the prefab as before.
 Overridden properties are marked in the inspector by having an unlocked lock icon before it. 
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_instance_edit.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_instance_edit.mp4" type="video/mp4">
 </video>
 
 ### Resetting an override
@@ -89,7 +89,7 @@ To drop an override and let the value follow the prefab again, right-click the v
 removes the override and returns the value to the prefab's.
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_instance_reset.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_instance_reset.mp4" type="video/mp4">
 </video>
 
 ## Editing the prefab itself
@@ -110,7 +110,7 @@ Press **Exit Prefab Edit** (or the **Back to Instance** button in the inspector)
 mode and return to normal per-instance editing.
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_prefab_edit.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_prefab_edit.mp4" type="video/mp4">
 </video>
 
 
@@ -128,7 +128,7 @@ a "Flame", you can place several torches and give one of them a different flame 
 position, while the rest keep following the prefab. Resetting works the same way.
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_nested_override.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_nested_override.mp4" type="video/mp4">
 </video>
 
 ### How editing reaches into nested prefabs
@@ -146,7 +146,7 @@ This keeps each prefab responsible for its own contents, while still letting a f
 in the scene fine-tune anything it needs.
 
 <video width="640" controls loop muted>
-   <source src="../../../../_static/img/pf_nested_edit.mp4" type="video/mp4">
+   <source src="../../../_static/img/pf_nested_edit.mp4" type="video/mp4">
 </video>
 
 ## Unpacking an instance
