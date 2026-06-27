@@ -182,11 +182,20 @@ void P64::Scene::update(float deltaTime)
         obj.id = data.objectId + i;
         obj.flags = ObjectFlags::ACTIVE | (obj.flags & ObjectFlags::HAS_CHILDREN);
         if(i == 0) {
-          // The root is placed directly at the spawn transform.
-          obj.group = 0;
+          // The root is placed directly at the spawn transform, parented if requested.
+          obj.group = data.parentId;
           obj.pos = data.pos;
           obj.scale = data.scale;
           obj.rot = data.rot;
+
+          if(data.parentId) {
+            if(auto* parent = getObjectById(data.parentId)) {
+              parent->setFlag(ObjectFlags::HAS_CHILDREN, true);
+              needsObjStateUpdate = true;
+            } else {
+              obj.group = 0;
+            }
+          }
         } else {
           // Children are baked relative to the root, so compose the spawn transform onto them.
           obj.group = data.objectId + storedParent;
@@ -443,7 +452,8 @@ uint16_t P64::Scene::addObject(
   uint32_t prefabIdx,
   const fm_vec3_t &pos,
   const fm_vec3_t &scale,
-  const fm_quat_t &rot
+  const fm_quat_t &rot,
+  uint16_t parentId
 ) {
   auto *prefabData = (uint8_t*)AssetManager::getByIndex(prefabIdx);
 
@@ -460,6 +470,7 @@ uint16_t P64::Scene::addObject(
     .rot = rot,
     .objectId = rootId,
     .count = (uint16_t)count,
+    .parentId = parentId,
   });
   return rootId;
 }
